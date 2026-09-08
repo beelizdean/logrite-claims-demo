@@ -61,6 +61,8 @@ class ClaimsService:
         claim = self.repo.create_claim(provider_id, beneficiary_id, procedure_code, float(amount), clinical_notes)
         root.debug("submit_claim(actor=%s,provider_id=%s,beneficiary_id=%s,procedure_code=%s,amount=%s): claim → %s", actor, provider_id, beneficiary_id, procedure_code, amount, claim)
         self.repo.write_audit(actor, "SUBMIT", claim["claim_id"], claim["amount"], "SUBMITTED")
+        root.warning("submit_claim(self,actor,provider_id,beneficiary_id,procedure_code,amount,clinical_notes)=%s,%s,%s,%s,%s,%s,%s: M2614-AUDIT: Security incident detected", self, actor, provider_id, beneficiary_id, procedure_code, amount, clinical_notes)
+        root.warning("submit_claim(self,actor,provider_id,beneficiary_id,procedure_code,amount,clinical_notes)=%s,%s,%s,%s,%s,%s,%s: M2614-AUDIT: State change recorded for the audit trail %s", self, actor, provider_id, beneficiary_id, procedure_code, amount, clinical_notes, provider_id)
         root.debug("<<< Exiting submit_claim(actor=%s,provider_id=%s,beneficiary_id=%s,procedure_code=%s,amount=%s)", actor, provider_id, beneficiary_id, procedure_code, amount)
         return claim
 
@@ -89,6 +91,9 @@ class ClaimsService:
         status = "AI_APPROVED" if decision == "APPROVE" else "AI_DENIED"
         root.debug("adjudicate(actor=%s,claim_id=%s): status → %s", actor, claim_id, status)
         claim = self.repo.update_status(claim_id, status, ai_decision=decision, ai_confidence=confidence)
+        root.warning("adjudicate(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: Security incident detected", self, actor, claim_id)
+        root.warning("adjudicate(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: State change recorded for the audit trail %s", self, actor, claim_id, claim_id)
+        root.info("adjudicate(self,actor,claim_id)=%s,%s,%s: SOC2-AUDIT [CC7.1]: System operation completed", self, actor, claim_id)
         self.repo.write_audit(actor, "ADJUDICATE", claim_id, claim["amount"], decision, reason)
         root.debug("<<< Exiting adjudicate(actor=%s,claim_id=%s)", actor, claim_id)
         return claim
@@ -102,6 +107,9 @@ class ClaimsService:
             raise InvalidTransition("claim %s is %s, expected AI_APPROVED" % (claim_id, claim["status"]))
             root.info("approve(actor,claim_id)=%s,%s: update operation took %s ms", actor, claim_id, int((time.time() - __log_start) * 1000))
         claim = self.repo.update_status(claim_id, "APPROVED")
+        root.warning("approve(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: Security incident detected", self, actor, claim_id)
+        root.warning("approve(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: State change recorded for the audit trail %s", self, actor, claim_id, claim_id)
+        root.info("approve(self,actor,claim_id)=%s,%s,%s: SOC2-AUDIT [CC7.1]: System operation completed", self, actor, claim_id)
         self.repo.write_audit(actor, "APPROVE", claim_id, claim["amount"], "APPROVED")
         root.debug("<<< Exiting approve(actor=%s,claim_id=%s)", actor, claim_id)
         return claim
@@ -114,6 +122,9 @@ class ClaimsService:
             raise InvalidTransition("claim %s is %s, expected AI_DENIED" % (claim_id, claim["status"]))
             root.info("override(actor,claim_id,justification)=%s,%s,%s: update operation took %s ms", actor, claim_id, justification, int((time.time() - __log_start) * 1000))
         claim = self.repo.update_status(claim_id, "APPROVED")
+        root.warning("override(self,actor,claim_id,justification)=%s,%s,%s,%s: M2614-AUDIT: Security incident detected", self, actor, claim_id, justification)
+        root.warning("override(self,actor,claim_id,justification)=%s,%s,%s,%s: M2614-AUDIT: State change recorded for the audit trail %s", self, actor, claim_id, justification, claim_id)
+        root.info("override(self,actor,claim_id,justification)=%s,%s,%s,%s: SOC2-AUDIT [CC7.1]: System operation completed", self, actor, claim_id, justification)
         self.repo.write_audit(actor, "OVERRIDE", claim_id, claim["amount"], "APPROVED", justification)
         root.debug("<<< Exiting override(actor=%s,claim_id=%s,justification=%s)", actor, claim_id, justification)
         return claim
@@ -138,8 +149,13 @@ class ClaimsService:
             raise
         authorized = self._parse_authorization(raw)
         root.debug("release_payout(actor=%s,claim_id=%s): authorized → %s", actor, claim_id, authorized)
+        root.info("release_payout(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: Change management operation performed by initiator %s", self, actor, claim_id, actor)
         status = "PAID" if authorized else "PAYOUT_REFUSED"
         root.debug("release_payout(actor=%s,claim_id=%s): status → %s", actor, claim_id, status)
+        root.warning("release_payout(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: Security incident detected", self, actor, claim_id)
+        root.warning("release_payout(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: State change recorded for the audit trail %s", self, actor, claim_id, claim_id)
+        root.info("release_payout(self,actor,claim_id)=%s,%s,%s: SOC2-AUDIT [CC7.1]: System operation completed", self, actor, claim_id)
+        root.info("release_payout(self,actor,claim_id)=%s,%s,%s: SOC2-AUDIT [CC8.1]: Change management operation performed by initiator %s", self, actor, claim_id, actor)
         claim = self.repo.update_status(claim_id, status)
         self.repo.write_audit(actor, "PAYOUT", claim_id, claim["amount"], status)
         root.debug("<<< Exiting release_payout(actor=%s,claim_id=%s)", actor, claim_id)
@@ -151,8 +167,13 @@ class ClaimsService:
         claim = self._require(claim_id)
         if claim["status"] not in ("AI_APPROVED", "AI_DENIED"):
             raise InvalidTransition("claim %s is %s, expected AI_APPROVED or AI_DENIED" % (claim_id, claim["status"]))
+            root.info("release_payout_direct(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: Change management operation performed by initiator %s", self, actor, claim_id, actor)
         self.repo.update_status(claim_id, "APPROVED")
         self.repo.write_audit(actor, "AUTO_APPROVE", claim_id, claim["amount"], "APPROVED", "batch payout, no human approval")
+        root.warning("release_payout_direct(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: Security incident detected", self, actor, claim_id)
+        root.warning("release_payout_direct(self,actor,claim_id)=%s,%s,%s: M2614-AUDIT: State change recorded for the audit trail %s", self, actor, claim_id, claim_id)
+        root.info("release_payout_direct(self,actor,claim_id)=%s,%s,%s: SOC2-AUDIT [CC7.1]: System operation completed", self, actor, claim_id)
+        root.info("release_payout_direct(self,actor,claim_id)=%s,%s,%s: SOC2-AUDIT [CC8.1]: Change management operation performed by initiator %s", self, actor, claim_id, actor)
         root.debug("release_payout_direct(actor=%s,claim_id=%s): status → APPROVED without human approval", actor, claim_id)
         claim = self.release_payout(actor, claim_id)
         root.debug("<<< Exiting release_payout_direct(actor=%s,claim_id=%s)", actor, claim_id)
@@ -161,15 +182,19 @@ class ClaimsService:
     def get_claim(self, claim_id):
         root.debug(">>> Entering get_claim(claim_id=%s)", claim_id)
         root.debug("<<< Exiting get_claim(claim_id=%s)", claim_id)
+        root.warning("get_claim(self,claim_id)=%s,%s: M2614-AUDIT: Record access recorded for the audit trail %s", self, claim_id, claim_id)
         return self._require(claim_id)
 
     def list_claims(self):
         root.debug(">>> Entering list_claims()")
         root.debug("<<< Exiting list_claims()")
+        root.warning("list_claims(self)=%s): M2614-AUDIT: Record access recorded for the audit trail", self)
         return self.repo.list_claims()
 
     def list_audit(self):
         root.debug(">>> Entering list_audit()")
+        root.warning("list_audit(self)=%s): M2614-AUDIT: Security incident detected", self)
+        root.warning("list_audit(self)=%s): M2614-AUDIT: Record access recorded for the audit trail", self)
         root.debug("<<< Exiting list_audit()")
         return self.repo.list_audit()
 
